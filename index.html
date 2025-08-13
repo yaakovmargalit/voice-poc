@@ -1,59 +1,150 @@
 <!DOCTYPE html>
 <html lang="he">
-  <head>
-    <meta charset="UTF-8" />
-    <title>המרת קול לטקסט</title>
-  </head>
-  <body>
-    <button id="recordBtn">🎤 התחל הקלטה</button>
-    <p id="result"></p>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice to Text</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #74ABE2, #5563DE);
+      color: #333;
+    }
 
-    <script>
-      let mediaRecorder;
-      let audioChunks = [];
-      let isRecording = false;
+    .container {
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
+      background: #fff;
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    }
 
-      // כתובת ה-Function URL
-      const FUNCTION_URL =
-        "https://a6wxeeaaevuch7dkfbnbkhajiy0lvfin.lambda-url.eu-central-1.on.aws/";
+    button {
+      background: #5563DE;
+      color: white;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1.2rem;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
 
-      document.getElementById("recordBtn").onclick = async () => {
-        if (!isRecording) {
-          audioChunks = [];
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-          });
-          mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-          mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-          mediaRecorder.start();
-          isRecording = true;
-          document.getElementById("recordBtn").innerText = "⏹ עצור הקלטה";
-        } else {
-          mediaRecorder.stop();
-          isRecording = false;
-          document.getElementById("recordBtn").innerText = "🎤 התחל הקלטה";
+    button:hover {
+      background: #4051b5;
+    }
+
+    .recording {
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(85, 99, 222, 0.7); }
+      70% { box-shadow: 0 0 0 20px rgba(85, 99, 222, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(85, 99, 222, 0); }
+    }
+
+    #transcript {
+      margin-top: 1.5rem;
+      width: 100%;
+      min-height: 100px;
+      border-radius: 12px;
+      border: 1px solid #ccc;
+      padding: 1rem;
+      font-size: 1rem;
+      resize: none;
+      background: #f9f9f9;
+      overflow-y: auto;
+    }
+
+    @media (max-width: 500px) {
+      button {
+        width: 80%;
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <button id="recordBtn">התחל הקלטה</button>
+    <div id="status" style="margin-top: 1rem;"></div>
+    <textarea id="transcript" placeholder="התמלול יופיע כאן..." readonly></textarea>
+  </div>
+
+  <script>
+    const recordBtn = document.getElementById('recordBtn');
+    const transcriptEl = document.getElementById('transcript');
+    const statusEl = document.getElementById('status');
+
+    let mediaRecorder;
+    let audioChunks = [];
+
+    recordBtn.addEventListener('click', async () => {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+        // בקשת מיקרופון
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = e => {
+            audioChunks.push(e.data);
+          };
 
           mediaRecorder.onstop = async () => {
-            const blob = new Blob(audioChunks, { type: "audio/webm" });
-            const arrayBuffer = await blob.arrayBuffer();
-            const base64Audio = btoa(
-              String.fromCharCode(...new Uint8Array(arrayBuffer))
-            );
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            audioChunks = [];
 
-            document.getElementById("result").innerText = "ממיר...";
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = async () => {
+              const base64Audio = reader.result.split(',')[1];
+              statusEl.textContent = "מעלה וממתין לתמלול...";
+              transcriptEl.value = "";
 
-            const res = await fetch(FUNCTION_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ audio: base64Audio }),
-            });
+              try {
+                const res = await fetch('https://a6wxeeaaevuch7dkfbnbkhajiy0lvfin.lambda-url.eu-central-1.on.aws/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ audio: base64Audio })
+                });
 
-            const data = await res.json();
-            document.getElementById("result").innerText =
-              data.text || "לא התקבלה תוצאה";
+                const data = await res.json();
+                transcriptEl.value = data.text || data.error;
+                statusEl.textContent = "התמלול הושלם!";
+              } catch (err) {
+                transcriptEl.value = "";
+                statusEl.textContent = "שגיאה בהתקשרות עם השרת";
+                console.error(err);
+              }
+            };
           };
+
+          mediaRecorder.start();
+          recordBtn.classList.add('recording');
+          recordBtn.textContent = "מקליט...";
+          statusEl.textContent = "הקלטה בפעולה...";
+
+          // עצירה אוטומטית אחרי 5 שניות
+          setTimeout(() => {
+            mediaRecorder.stop();
+            recordBtn.classList.remove('recording');
+            recordBtn.textContent = "התחל הקלטה";
+          }, 5000);
+
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = "לא ניתן לגשת למיקרופון";
         }
-      };
-    </script>
-  </body>
+      }
+    });
+  </script>
+</body>
 </html>

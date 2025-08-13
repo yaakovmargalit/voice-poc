@@ -121,7 +121,7 @@
                 statusEl.textContent = "התמלול הושלם!";
               } catch (err) {
                 transcriptEl.value = "";
-                statusEl.textContent = "שגיאה בהתקשרות עם השרת";
+                statusEl.textContent = JSON.stringify(err);
                 console.error(err);
               }
             };

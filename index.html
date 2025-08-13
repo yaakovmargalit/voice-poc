@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="he">
+  <head>
+    <meta charset="UTF-8" />
+    <title>המרת קול לטקסט</title>
+  </head>
+  <body>
+    <button id="recordBtn">🎤 התחל הקלטה</button>
+    <p id="result"></p>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+      let isRecording = false;
+
+      // כתובת ה-Function URL
+      const FUNCTION_URL =
+        "https://a6wxeeaaevuch7dkfbnbkhajiy0lvfin.lambda-url.eu-central-1.on.aws/";
+
+      document.getElementById("recordBtn").onclick = async () => {
+        if (!isRecording) {
+          audioChunks = [];
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+          mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+          mediaRecorder.start();
+          isRecording = true;
+          document.getElementById("recordBtn").innerText = "⏹ עצור הקלטה";
+        } else {
+          mediaRecorder.stop();
+          isRecording = false;
+          document.getElementById("recordBtn").innerText = "🎤 התחל הקלטה";
+
+          mediaRecorder.onstop = async () => {
+            const blob = new Blob(audioChunks, { type: "audio/webm" });
+            const arrayBuffer = await blob.arrayBuffer();
+            const base64Audio = btoa(
+              String.fromCharCode(...new Uint8Array(arrayBuffer))
+            );
+
+            document.getElementById("result").innerText = "ממיר...";
+
+            const res = await fetch(FUNCTION_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ audio: base64Audio }),
+            });
+
+            const data = await res.json();
+            document.getElementById("result").innerText =
+              data.text || "לא התקבלה תוצאה";
+          };
+        }
+      };
+    </script>
+  </body>
+</html>

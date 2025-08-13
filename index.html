@@ -14,16 +14,22 @@
       height: 100vh;
       background: linear-gradient(135deg, #74ABE2, #5563DE);
       color: #333;
+      direction: rtl;
     }
 
     .container {
       text-align: center;
       width: 90%;
-      max-width: 400px;
+      max-width: 600px;
       background: #fff;
       padding: 2rem;
       border-radius: 16px;
       box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 10px;
     }
 
     button {
@@ -79,72 +85,74 @@
     <textarea id="transcript" placeholder="התמלול יופיע כאן..." readonly></textarea>
   </div>
 
-  <script>
-    const recordBtn = document.getElementById('recordBtn');
-    const transcriptEl = document.getElementById('transcript');
-    const statusEl = document.getElementById('status');
+<script>
+const recordBtn = document.getElementById('recordBtn');
+const transcriptEl = document.getElementById('transcript');
+const statusEl = document.getElementById('status');
 
-    let mediaRecorder;
-    let audioChunks = [];
+let mediaRecorder;
+let audioChunks = [];
 
-    recordBtn.addEventListener('click', async () => {
-      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-        // בקשת מיקרופון
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          mediaRecorder = new MediaRecorder(stream);
+recordBtn.addEventListener('click', async () => {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+    // התחלת הקלטה
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
 
-          mediaRecorder.ondataavailable = e => {
-            audioChunks.push(e.data);
-          };
+      mediaRecorder.ondataavailable = e => {
+        audioChunks.push(e.data);
+      };
 
-          mediaRecorder.onstop = async () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            audioChunks = [];
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        audioChunks = [];
 
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = async () => {
-              const base64Audio = reader.result.split(',')[1];
-              statusEl.textContent = "מעלה וממתין לתמלול...";
-              transcriptEl.value = "";
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64Audio = reader.result.split(',')[1];
+          statusEl.textContent = "מעלה וממתין לתמלול...";
+          transcriptEl.value = "";
 
-              try {
-                const res = await fetch('https://a6wxeeaaevuch7dkfbnbkhajiy0lvfin.lambda-url.eu-central-1.on.aws/', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ audio: base64Audio })
-                });
+          try {
+            const res = await fetch('https://a6wxeeaaevuch7dkfbnbkhajiy0lvfin.lambda-url.eu-central-1.on.aws/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ audio: base64Audio })
+            });
 
-                const data = await res.json();
-                transcriptEl.value = data.text || data.error;
-                statusEl.textContent = "התמלול הושלם!";
-              } catch (err) {
-                transcriptEl.value = "";
-                statusEl.textContent = JSON.stringify(err);
-                console.error(err);
-              }
-            };
-          };
-
-          mediaRecorder.start();
-          recordBtn.classList.add('recording');
-          recordBtn.textContent = "מקליט...";
-          statusEl.textContent = "הקלטה בפעולה...";
-
-          // עצירה אוטומטית אחרי 5 שניות
-          setTimeout(() => {
-            mediaRecorder.stop();
-            recordBtn.classList.remove('recording');
+            const data = await res.json();
+            transcriptEl.value = data.text || data.error;
+            statusEl.textContent = "התמלול הושלם!";
+          } catch (err) {
+            transcriptEl.value = "";
+            statusEl.textContent = "שגיאה בהתקשרות עם השרת";
+            console.error(err);
+          } finally {
+            // החזרת הכפתור למצב התחל הקלטה
             recordBtn.textContent = "התחל הקלטה";
-          }, 5000);
+            recordBtn.classList.remove('recording');
+          }
+        };
+      };
 
-        } catch (err) {
-          console.error(err);
-          statusEl.textContent = "לא ניתן לגשת למיקרופון";
-        }
-      }
-    });
-  </script>
+      mediaRecorder.start();
+      recordBtn.classList.add('recording');
+      recordBtn.textContent = "הקלטה בפעולה - לחץ לעצירה";
+      statusEl.textContent = "הקלטה בפעולה...";
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = "לא ניתן לגשת למיקרופון";
+    }
+  } else if (mediaRecorder.state === 'recording') {
+    // עצירת הקלטה
+    mediaRecorder.stop();
+    recordBtn.textContent = "מעבד את ההקלטה...";
+    statusEl.textContent = "עצירת הקלטה...";
+  }
+});
+</script>
+
 </body>
 </html>

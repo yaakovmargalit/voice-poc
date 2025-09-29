@@ -282,6 +282,14 @@ zipInput.addEventListener('change', async (e) => {
 });
 
 /** עיבוד ZIP: שליפה סדרתית של כל קובץ webm ושליחתו לתמלול */
+// זיהוי קבצי AppleDouble ("._") לפי חתימה בינארית 0x00051607 (big-endian)
+function looksAppleDouble(arrayBuffer) {
+  if (arrayBuffer.byteLength < 8) return false;
+  const dv = new DataView(arrayBuffer);
+  return dv.getUint32(0, false) === 0x00051607;
+}
+
+/** עיבוד ZIP: שליפה סדרתית של כל קובץ webm אמיתי (ללא __MACOSX ו-._) ושליחתו לתמלול */
 async function processZipFile(zipFile) {
   transcriptEl.value = '';
   statusEl.textContent = 'טוען ZIP…';
@@ -292,9 +300,15 @@ async function processZipFile(zipFile) {
 
   try {
     const zip = await JSZip.loadAsync(zipFile);
-    // לאסוף רק קבצי .webm (ללא תיקיות)
-    const entries = Object.values(zip.files)
-      .filter(f => !f.dir && /\.webm$/i.test(f.name));
+
+    // סינון: רק .webm, לא תיקיות, לא מתוך __MACOSX/, ולא קבצי "._"
+    const allFiles = Object.values(zip.files);
+    const entries = allFiles.filter(f =>
+      !f.dir &&
+      /\.webm$/i.test(f.name) &&
+      !/^__MACOSX\//.test(f.name) &&
+      !/(^|\/)\._/.test(f.name)
+    );
 
     if (entries.length === 0) {
       statusEl.textContent = 'לא נמצאו קבצי ‎.webm‎ בארכיון.';
@@ -306,22 +320,40 @@ async function processZipFile(zipFile) {
     let completed = 0;
     const total = entries.length;
 
-    // עיבוד סדרתי (נמנע מעומסים/Rate Limit)
     for (const entry of entries) {
       setOverlayProgress(
         Math.round((completed / total) * 100),
         `מעבד: ${entry.name} (${completed}/${total})`
       );
 
-      // קבלת Blob של כל קובץ
+      // הבא את תוכן הקובץ
       const arrayBuffer = await entry.async('arraybuffer');
+
+      // דילוג על קבצי AppleDouble (בטיחות נוספת מעבר לשם)
+      if (looksAppleDouble(arrayBuffer)) {
+        transcriptEl.value += `\n📄 ${entry.name}\n(דילוג – קובץ AppleDouble של macOS)\n${'-'.repeat(30)}\n`;
+        completed++;
+        const percent = Math.round((completed / total) * 100);
+        overallProgress.value = percent;
+        setOverlayProgress(percent, `דילגתי על מטא־קובץ… ${completed}/${total}`);
+        continue;
+      }
+
+      // דילוג על קבצים קטנים/ריקים מדי
+      if (arrayBuffer.byteLength < 32) {
+        transcriptEl.value += `\n📄 ${entry.name}\n(דילוג – קובץ ריק/קטן מדי)\n${'-'.repeat(30)}\n`;
+        completed++;
+        const percent = Math.round((completed / total) * 100);
+        overallProgress.value = percent;
+        setOverlayProgress(percent, `דילגתי על קובץ קטן… ${completed}/${total}`);
+        continue;
+      }
+
+      // צור Blob ושלח לתמלול
       const blob = new Blob([arrayBuffer], { type: 'audio/webm' });
 
-      // שליחה לתמלול
       try {
         const text = await sendAudioForTranscription(blob);
-
-        // כתיבה לתוצאה (מצטבר, עם שם הקובץ)
         transcriptEl.value += `\n📄 ${entry.name}\n${text || '(לא התקבל טקסט)'}\n${'-'.repeat(30)}\n`;
       } catch (err) {
         console.error('שגיאה בתמלול קובץ', entry.name, err);
@@ -344,6 +376,7 @@ async function processZipFile(zipFile) {
     setTimeout(resetProgressBars, 800);
   }
 }
+
 </script>
 
 </body>

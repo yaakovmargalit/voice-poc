@@ -1,140 +1,258 @@
 <!DOCTYPE html>
 <html lang="he">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Voice to Text</title>
   <style>
+    :root {
+      --brand:#5563DE;
+      --brand-dark:#4051b5;
+    }
     body {
       margin: 0;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
-      background: linear-gradient(135deg, #74ABE2, #5563DE);
+      min-height: 100vh;
+      background: linear-gradient(135deg, #74ABE2, var(--brand));
       color: #333;
       direction: rtl;
     }
-
     .container {
       text-align: center;
       width: 90%;
-      max-width: 600px;
+      max-width: 680px;
       background: #fff;
       padding: 2rem;
       border-radius: 16px;
       box-shadow: 0 8px 20px rgba(0,0,0,0.2);
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      align-items: stretch;
+      gap: 12px;
       margin: 10px;
     }
-
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
     button {
-      background: #5563DE;
+      background: var(--brand);
       color: white;
       border: none;
-      padding: 1rem 2rem;
-      font-size: 1.2rem;
+      padding: 1rem 1.25rem;
+      font-size: 1.05rem;
       border-radius: 50px;
       cursor: pointer;
-      transition: background 0.3s;
+      transition: background 0.3s, transform .05s ease-in-out;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
     }
-
-    button:hover {
-      background: #4051b5;
-    }
-
-    .recording {
-      animation: pulse 1s infinite;
-    }
-
+    button:hover { background: var(--brand-dark); }
+    button:active { transform: translateY(1px); }
+    .secondary { background:#e9ecff; color:#223; }
+    .secondary:hover { background:#dce1ff; }
+    .recording { animation: pulse 1s infinite; }
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(85, 99, 222, 0.7); }
       70% { box-shadow: 0 0 0 20px rgba(85, 99, 222, 0); }
       100% { box-shadow: 0 0 0 0 rgba(85, 99, 222, 0); }
     }
-
-    #transcript {
-      margin-top: 1.5rem;
+    #status {
+      min-height: 1.25rem;
+      color:#202124;
+      font-size: .95rem;
+    }
+    progress {
       width: 100%;
-      min-height: 100px;
+      height: 10px;
+      accent-color: var(--brand);
+      display: none;
+    }
+    #transcript {
+      width: 100%;
+      min-height: 160px;
       border-radius: 12px;
       border: 1px solid #ccc;
       padding: 1rem;
       font-size: 1rem;
-      resize: none;
+      resize: vertical;
       background: #f9f9f9;
       overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    @media (max-width: 520px) {
+      .actions { grid-template-columns: 1fr; }
+      button { width: 100%; font-size: 1rem; }
     }
 
-    @media (max-width: 500px) {
-      button {
-        width: 80%;
-        font-size: 1rem;
-      }
+    /* מסך טעינה מלא */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      backdrop-filter: blur(2px);
+    }
+    .overlay-content {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 24px 28px;
+      width: min(90vw, 520px);
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0,0,0,.25);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .spinner {
+      width: 44px; height: 44px; margin: 0 auto 6px auto;
+      border: 5px solid #e6e8ff;
+      border-top: 5px solid var(--brand);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay h3 { margin: 6px 0 0; }
+    .overlay p { margin: 0; color:#555; }
+    .overlay .small { font-size: .9rem; color:#666; }
+    .overlay progress { display:block; height:12px; }
+
+    .file-hint {
+      font-size:.9rem; color:#555;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <button id="recordBtn">התחל הקלטה</button>
-    <div id="status" style="margin-top: 1rem;"></div>
+    <div class="actions">
+      <button id="recordBtn" title="התחלת הקלטה מהמיקרופון">🎙️ התחל הקלטה</button>
+
+      <!-- כפתור העלאת ZIP -->
+      <button id="zipBtn" class="secondary" title="העלה ZIP של קבצי webm לתמלול">📦 העלאת ZIP לתמלול</button>
+      <input type="file" id="zipInput" accept=".zip" style="display:none" />
+    </div>
+
+    <div id="status"></div>
+    <progress id="overallProgress" value="0" max="100"></progress>
+    <div class="file-hint">ניתן להעלות קובץ ‎ZIP‎ שמכיל קבצי ‎.webm‎. כל קובץ יעובד בתורו.</div>
+
     <textarea id="transcript" placeholder="התמלול יופיע כאן..." readonly></textarea>
   </div>
 
+  <!-- מסך טעינה -->
+  <div class="overlay" id="overlay" aria-live="polite" aria-busy="true">
+    <div class="overlay-content">
+      <div class="spinner" role="status" aria-label="מעבד..."></div>
+      <h3>מעבד קבצים…</h3>
+      <p>נא לא לסגור את הדף</p>
+      <progress id="overlayProgress" value="0" max="100"></progress>
+      <div class="small" id="overlayDetail"></div>
+    </div>
+  </div>
+
+  <!-- JSZip לניתוח ZIP בצד הלקוח -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha256-3e9Vqv1s6j9r0qX9K91QZq6xR1A+v8m8V9s9cYtZx2I=" crossorigin="anonymous"></script>
+
 <script>
 const recordBtn = document.getElementById('recordBtn');
+const zipBtn = document.getElementById('zipBtn');
+const zipInput = document.getElementById('zipInput');
+
 const transcriptEl = document.getElementById('transcript');
 const statusEl = document.getElementById('status');
+const overallProgress = document.getElementById('overallProgress');
+
+const overlay = document.getElementById('overlay');
+const overlayProgress = document.getElementById('overlayProgress');
+const overlayDetail = document.getElementById('overlayDetail');
 
 let mediaRecorder;
 let audioChunks = [];
 
+/** פונקציית שירות: שליחת Blob של אודיו לתמלול ומחזירה טקסט */
+async function sendAudioForTranscription(audioBlob) {
+  // ממיר ל-base64 בלי לעלות לשרת לפני (כמו הלוגיקה הקיימת)
+  const base64Audio = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onloadend = () => {
+      const res = (reader.result || '').toString();
+      resolve(res.split(',')[1]); // מוריד את ה-prefix
+    };
+    reader.readAsDataURL(audioBlob);
+  });
+
+  const endpoint = 'https://a6wxeeaaevuch7dkfbnbkhajiy0lvfin.lambda-url.eu-central-1.on.aws/';
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audio: base64Audio })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`שגיאה מהשרת (${res.status}): ${text || 'לא ידוע'}`);
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (data.error && !data.text) {
+    throw new Error(data.error);
+  }
+  return data.text || '';
+}
+
+/** UI Helpers */
+function showOverlay(show) {
+  overlay.style.display = show ? 'flex' : 'none';
+  // בזמן שהאוברליי פתוח – למנוע גלילה מאחורי המסך
+  document.body.style.overflow = show ? 'hidden' : '';
+}
+function setOverlayProgress(percent, detailText='') {
+  overlayProgress.value = Math.max(0, Math.min(100, percent));
+  overlayDetail.textContent = detailText;
+}
+function resetProgressBars() {
+  overallProgress.value = 0;
+  overallProgress.style.display = 'none';
+  setOverlayProgress(0, '');
+}
+
+/** הקלטה מהמיקרופון (קיים, עם ריפקטור קטן לשימוש ב-sendAudioForTranscription) */
 recordBtn.addEventListener('click', async () => {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-    // התחלת הקלטה
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorder = new MediaRecorder(stream);
 
-      mediaRecorder.ondataavailable = e => {
-        audioChunks.push(e.data);
-      };
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         audioChunks = [];
+        statusEl.textContent = "מעלה וממתין לתמלול...";
+        transcriptEl.value = "";
 
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          const base64Audio = reader.result.split(',')[1];
-          statusEl.textContent = "מעלה וממתין לתמלול...";
+        try {
+          const text = await sendAudioForTranscription(audioBlob);
+          transcriptEl.value = text || '(לא התקבל טקסט)';
+          statusEl.textContent = "התמלול הושלם!";
+        } catch (err) {
+          console.error(err);
           transcriptEl.value = "";
-
-          try {
-            const res = await fetch('https://a6wxeeaaevuch7dkfbnbkhajiy0lvfin.lambda-url.eu-central-1.on.aws/', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ audio: base64Audio })
-            });
-
-            const data = await res.json();
-            transcriptEl.value = data.text || data.error;
-            statusEl.textContent = "התמלול הושלם!";
-          } catch (err) {
-            transcriptEl.value = "";
-            statusEl.textContent = "שגיאה בהתקשרות עם השרת";
-            console.error(err);
-          } finally {
-            // החזרת הכפתור למצב התחל הקלטה
-            recordBtn.textContent = "התחל הקלטה";
-            recordBtn.classList.remove('recording');
-          }
-        };
+          statusEl.textContent = "שגיאה בהתקשרות עם השרת";
+        } finally {
+          recordBtn.textContent = "התחל הקלטה";
+          recordBtn.classList.remove('recording');
+        }
       };
 
       mediaRecorder.start();
@@ -146,12 +264,86 @@ recordBtn.addEventListener('click', async () => {
       statusEl.textContent = "לא ניתן לגשת למיקרופון";
     }
   } else if (mediaRecorder.state === 'recording') {
-    // עצירת הקלטה
     mediaRecorder.stop();
     recordBtn.textContent = "מעבד את ההקלטה...";
     statusEl.textContent = "עצירת הקלטה...";
   }
 });
+
+/** העלאת ZIP */
+zipBtn.addEventListener('click', () => zipInput.click());
+
+zipInput.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  await processZipFile(file);
+  // איפוס הבחירה – שיאפשר בחירה מחדש של אותו קובץ אם צריך
+  zipInput.value = '';
+});
+
+/** עיבוד ZIP: שליפה סדרתית של כל קובץ webm ושליחתו לתמלול */
+async function processZipFile(zipFile) {
+  transcriptEl.value = '';
+  statusEl.textContent = 'טוען ZIP…';
+  overallProgress.style.display = 'block';
+  overallProgress.value = 0;
+  showOverlay(true);
+  setOverlayProgress(0, 'פותח ארכיון…');
+
+  try {
+    const zip = await JSZip.loadAsync(zipFile);
+    // לאסוף רק קבצי .webm (ללא תיקיות)
+    const entries = Object.values(zip.files)
+      .filter(f => !f.dir && /\.webm$/i.test(f.name));
+
+    if (entries.length === 0) {
+      statusEl.textContent = 'לא נמצאו קבצי ‎.webm‎ בארכיון.';
+      showOverlay(false);
+      resetProgressBars();
+      return;
+    }
+
+    let completed = 0;
+    const total = entries.length;
+
+    // עיבוד סדרתי (נמנע מעומסים/Rate Limit)
+    for (const entry of entries) {
+      setOverlayProgress(
+        Math.round((completed / total) * 100),
+        `מעבד: ${entry.name} (${completed}/${total})`
+      );
+
+      // קבלת Blob של כל קובץ
+      const arrayBuffer = await entry.async('arraybuffer');
+      const blob = new Blob([arrayBuffer], { type: 'audio/webm' });
+
+      // שליחה לתמלול
+      try {
+        const text = await sendAudioForTranscription(blob);
+
+        // כתיבה לתוצאה (מצטבר, עם שם הקובץ)
+        transcriptEl.value += `\n📄 ${entry.name}\n${text || '(לא התקבל טקסט)'}\n${'-'.repeat(30)}\n`;
+      } catch (err) {
+        console.error('שגיאה בתמלול קובץ', entry.name, err);
+        transcriptEl.value += `\n📄 ${entry.name}\nשגיאה בתמלול: ${err.message}\n${'-'.repeat(30)}\n`;
+      }
+
+      completed++;
+      const percent = Math.round((completed / total) * 100);
+      overallProgress.value = percent;
+      setOverlayProgress(percent, `עובד… ${completed}/${total}`);
+    }
+
+    statusEl.textContent = `העיבוד הושלם (${completed}/${total}).`;
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'שגיאה בקריאת ה-ZIP. ודא שהקובץ תקין.';
+  } finally {
+    showOverlay(false);
+    setOverlayProgress(100, 'הסתיים');
+    setTimeout(resetProgressBars, 800);
+  }
+}
 </script>
 
 </body>

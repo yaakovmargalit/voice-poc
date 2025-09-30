@@ -110,7 +110,7 @@
 
     <div class="toolbar">
       <span class="tag">Function URL</span>
-      <input id="urlInput" class="url" type="url"
+      <input disabled id="urlInput" class="url" type="url"
              value="https://q7vo754nhmb3wl33a2des4txaq0xwzdh.lambda-url.eu-central-1.on.aws/"
              placeholder="https://...lambda-url...on.aws/" />
       <button id="refreshBtn" class="btn"><span class="loader" style="display:none" id="btnSpin"></span><span id="btnTxt">טען נתונים</span></button>
@@ -265,10 +265,7 @@
                       <td>${badgeStatus(r.status || '—')}</td>
                       <td class="muted">${fmtDate(r.timestamp)}</td>
                       <td>
-                        ${hasFull
-                          ? `<details><summary>הצג/הסתר טקסט</summary><div class="text">${content}</div></details>`
-                          : `<div class="text">${content || '<span class="muted">—</span>'}</div>`
-                        }
+                        <div class="text">${content || '<span class="muted">—</span>'}</div>
                       </td>
                     </tr>
                   `;
